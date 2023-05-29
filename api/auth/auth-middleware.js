@@ -1,3 +1,6 @@
+const userModel = require("../users/users-model");
+const bcryptjs = require("bcryptjs");
+
 /*
   Kullanıcının sunucuda kayıtlı bir oturumu yoksa
 
@@ -6,11 +9,20 @@
     "message": "Geçemezsiniz!"
   }
 */
-function sinirli() {
-
+function sinirli(req, res, next) {
+  try {
+    if (req.session && req.session.user_id > 0) {
+      next();
+    } else {
+      res.status(401).json({ message: "Geçemezsiniz!" });
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 /*
+//Register bölümü
   req.body de verilen username halihazırda veritabanında varsa
 
   status: 422
@@ -18,11 +30,23 @@ function sinirli() {
     "message": "Username kullaniliyor"
   }
 */
-function usernameBostami() {
 
+async function usernameBostami(req, res, next) {
+  try {
+    let { username } = req.body;
+    const isExisting = await userModel.goreBul({ username: username });
+    if (isExisting && isExisting.length > 0) {
+      res.status(422).json({ message: "Username kullaniliyor" });
+    } else {
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 /*
+//Login bölümü
   req.body de verilen username veritabanında yoksa
 
   status: 401
@@ -30,11 +54,37 @@ function usernameBostami() {
     "message": "Geçersiz kriter"
   }
 */
-function usernameVarmi() {
 
+async function usernameVarmi(req, res, next) {
+  try {
+    let { username } = req.body;
+    const isExisting = await userModel.goreBul({ username: username });
+    if (isExisting && isExisting.length > 0) {
+      let user = isExisting[0];
+      let isPasswordMatch = bcryptjs.compareSync(
+        req.body.password,
+        user.password
+      );
+      if (isPasswordMatch) {
+        req.dbUser = user;
+        next();
+      } else {
+        res.status(401).json({
+          message: "Geçersiz kriter",
+        });
+      }
+    } else {
+      res.status(401).json({
+        message: "Geçersiz kriter",
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 /*
+// Register ve Login bölümleri için ortak
   req.body de şifre yoksa veya 3 karakterden azsa
 
   status: 422
@@ -42,8 +92,39 @@ function usernameVarmi() {
     "message": "Şifre 3 karakterden fazla olmalı"
   }
 */
-function sifreGecerlimi() {
+function sifreGecerlimi(req, res, next) {
+  try {
+    let { password } = req.body;
+    if (!password || password.length < 3) {
+      res.status(422).json({ message: "Şifre 3 karakterden fazla olmalı" });
+    } else {
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
+}
 
+//Register ve Login bölümleri için ortak olan ayrıca bir fonksiyon yazıldı
+function checkPayload(req, res, next) {
+  try {
+    let { username, password } = req.body;
+    if (!username || !password) {
+      res.status(422).json({ message: "Şifre 3 karakterden fazla olmalı" });
+    } else {
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 // Diğer modüllerde kullanılabilmesi için fonksiyonları "exports" nesnesine eklemeyi unutmayın.
+
+module.exports = {
+  usernameBostami,
+  checkPayload,
+  sifreGecerlimi,
+  usernameVarmi,
+  sinirli,
+};
